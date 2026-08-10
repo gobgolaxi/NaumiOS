@@ -1,0 +1,10 @@
+*.o
+*.elf
+*.img
+*.bin
+*.map
+*.d
+build/
+.vscode/
+.idea/
+.claude/
