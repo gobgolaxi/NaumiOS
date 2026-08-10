@@ -35,9 +35,10 @@ LDFLAGS := \
 	-m aarch64elf \
 	-T linker.ld
 
-SRCS := $(shell find kernel -type f -name '*.c')
-OBJS := $(patsubst %.c,$(BUILD_DIR)/%.c.o,$(SRCS))
-DEPS := $(OBJS:.o=.d)
+CSRCS := $(shell find kernel -type f -name '*.c')
+SSRCS := $(shell find kernel -type f -name '*.S')
+OBJS := $(patsubst %.c,$(BUILD_DIR)/%.c.o,$(CSRCS)) $(patsubst %.S,$(BUILD_DIR)/%.S.o,$(SSRCS))
+DEPS := $(filter %.d,$(OBJS:.o=.d))
 
 .PHONY: all run clean
 
@@ -48,6 +49,10 @@ $(KERNEL_ELF): $(OBJS) linker.ld
 	$(LD) $(LDFLAGS) $(OBJS) -o $@
 
 $(BUILD_DIR)/%.c.o: %.c
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) $(CPPFLAGS) -c $< -o $@
+
+$(BUILD_DIR)/%.S.o: %.S
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) $(CPPFLAGS) -c $< -o $@
 

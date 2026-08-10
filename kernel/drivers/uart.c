@@ -28,3 +28,11 @@ void uart_puts(const char *s) {
         uart_putc(*s++);
     }
 }
+
+void uart_puthex(uint64_t val) {
+    static const char digits[] = "0123456789abcdef";
+    uart_puts("0x");
+    for (int shift = 60; shift >= 0; shift -= 4) {
+        uart_putc(digits[(val >> shift) & 0xF]);
+    }
+}

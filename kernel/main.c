@@ -4,6 +4,7 @@
 
 #include "drivers/uart.h"
 #include "arch/aarch64/mmu.h"
+#include "arch/aarch64/exceptions.h"
 
 #define KERNEL_STACK_SIZE (64 * 1024)
 
@@ -55,6 +56,7 @@ void kmain(void) {
               executable_address_request.response->virtual_base);
 
     uart_init();
+    exceptions_init();
 
     uart_puts("NaumiOS boot OK\n");
 
@@ -64,6 +66,7 @@ void kmain(void) {
     if (hhdm_request.response != NULL) {
         uart_puts("Limine HHDM offset received\n");
     }
+    uart_puts("Exception vectors installed\n");
 
     hcf();
 }
