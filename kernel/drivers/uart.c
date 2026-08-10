@@ -1,6 +1,6 @@
 #include <stdint.h>
 #include "uart.h"
-#include "../arch/aarch64/mmu.h"
+#include "../mm/vmm.h"
 
 /* PL011 UART0, fixed physical MMIO base on the QEMU `virt` machine.
    Not covered by Limine's HHDM (base revision 3+ only maps RAM-backed
@@ -12,7 +12,7 @@
 #define UARTFR_TXFF (1 << 5)
 
 void uart_init(void) {
-    mmu_map_device_identity(UART0_BASE);
+    vmm_map_device(UART0_BASE);
 }
 
 void uart_putc(char c) {

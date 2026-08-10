@@ -3,7 +3,8 @@
 #include <limine.h>
 
 #include "drivers/uart.h"
-#include "arch/aarch64/mmu.h"
+#include "mm/pmm.h"
+#include "mm/vmm.h"
 #include "arch/aarch64/exceptions.h"
 
 #define KERNEL_STACK_SIZE (64 * 1024)
@@ -26,12 +27,6 @@ static volatile struct limine_hhdm_request hhdm_request = {
     .revision = 0
 };
 
-__attribute__((used, section(".limine_requests")))
-static volatile struct limine_executable_address_request executable_address_request = {
-    .id = LIMINE_EXECUTABLE_ADDRESS_REQUEST_ID,
-    .revision = 0
-};
-
 __attribute__((used, section(".limine_requests_start")))
 static volatile uint64_t limine_requests_start_marker[] = LIMINE_REQUESTS_START_MARKER;
 
@@ -49,24 +44,24 @@ void kmain(void) {
         hcf();
     }
 
-    if (executable_address_request.response == NULL) {
+    if (memmap_request.response == NULL || hhdm_request.response == NULL) {
         hcf();
     }
-    mmu_init(executable_address_request.response->physical_base,
-              executable_address_request.response->virtual_base);
+    uint64_t hhdm_offset = hhdm_request.response->offset;
+
+    pmm_init(memmap_request.response, hhdm_offset);
+    vmm_init(hhdm_offset);
 
     uart_init();
     exceptions_init();
 
     uart_puts("NaumiOS boot OK\n");
-
-    if (memmap_request.response != NULL) {
-        uart_puts("Limine memmap entries received\n");
-    }
-    if (hhdm_request.response != NULL) {
-        uart_puts("Limine HHDM offset received\n");
-    }
     uart_puts("Exception vectors installed\n");
+    uart_puts("Physical memory: ");
+    uart_puthex(pmm_free_pages() * PAGE_SIZE);
+    uart_puts(" free / ");
+    uart_puthex(pmm_total_pages() * PAGE_SIZE);
+    uart_puts(" total\n");
 
     hcf();
 }
