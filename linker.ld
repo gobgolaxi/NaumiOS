@@ -1,7 +1,7 @@
 /* AArch64 ELF64, higher-half kernel loaded by Limine. */
 OUTPUT_FORMAT(elf64-littleaarch64)
 
-ENTRY(kmain)
+ENTRY(_start)
 
 PHDRS
 {

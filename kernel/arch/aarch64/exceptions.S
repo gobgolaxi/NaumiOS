@@ -73,12 +73,17 @@ vector_table:
     vector_entry 14  /* FIQ,         lower EL, AArch32 */
     vector_entry 15  /* SError,      lower EL, AArch32 */
 
+/* exc_handler returns the SP to resume with (as a plain uint64_t, in x0):
+   normally the same frame it was just handed back unchanged, but the timer
+   IRQ path may return a *different* task's saved frame pointer instead —
+   that's the entire mechanism the scheduler uses to context-switch. */
 .macro vector_handler vector_num
 vector_handler_\vector_num:
     save_context
     mov x0, #\vector_num
     mov x1, sp
     bl exc_handler
+    mov sp, x0
     restore_context
     eret
 .endm

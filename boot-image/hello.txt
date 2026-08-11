@@ -1,0 +1,3 @@
+Hello from the NaumiOS FAT16 driver!
+If you can read this via `cat hello.txt` in the shell, the full storage
+stack works: virtio-blk (legacy virtio-mmio) -> GPT -> FAT16 -> shell.

@@ -118,3 +118,7 @@ uint64_t pmm_free_pages(void) {
 uint64_t pmm_total_pages(void) {
     return bitmap_page_count;
 }
+
+uint64_t pmm_hhdm_offset(void) {
+    return hhdm_off;
+}

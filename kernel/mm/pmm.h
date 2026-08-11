@@ -20,4 +20,8 @@ void pmm_free_page(uint64_t phys_addr);
 uint64_t pmm_free_pages(void);
 uint64_t pmm_total_pages(void);
 
+/* HHDM offset stashed by pmm_init(), for callers that need to turn a
+   physical page they just allocated into a writable pointer themselves. */
+uint64_t pmm_hhdm_offset(void);
+
 #endif

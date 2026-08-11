@@ -1,18 +1,17 @@
 #include <stdint.h>
 #include "uart.h"
 #include "../mm/vmm.h"
+#include "../arch/aarch64/mmio_map.h"
 
-/* PL011 UART0, fixed physical MMIO base on the QEMU `virt` machine.
-   Not covered by Limine's HHDM (base revision 3+ only maps RAM-backed
+/* Not covered by Limine's HHDM (base revision 3+ only maps RAM-backed
    memmap regions), so it needs its own identity mapping first. */
-#define UART0_BASE 0x09000000UL
-
-#define UARTDR (*(volatile uint32_t *)(UART0_BASE + 0x00))
-#define UARTFR (*(volatile uint32_t *)(UART0_BASE + 0x18))
+#define UARTDR (*(volatile uint32_t *)(MMIO_UART0_BASE + 0x00))
+#define UARTFR (*(volatile uint32_t *)(MMIO_UART0_BASE + 0x18))
 #define UARTFR_TXFF (1 << 5)
+#define UARTFR_RXFE (1 << 4)
 
 void uart_init(void) {
-    vmm_map_device(UART0_BASE);
+    vmm_map_device(MMIO_UART0_BASE);
 }
 
 void uart_putc(char c) {
@@ -27,6 +26,14 @@ void uart_puts(const char *s) {
         }
         uart_putc(*s++);
     }
+}
+
+int uart_try_getc(char *out) {
+    if (UARTFR & UARTFR_RXFE) {
+        return 0;
+    }
+    *out = (char)(UARTDR & 0xFF);
+    return 1;
 }
 
 void uart_puthex(uint64_t val) {
