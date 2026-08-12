@@ -2,6 +2,7 @@
 #include <stddef.h>
 #include "sched.h"
 #include "../mm/heap.h"
+#include "../mm/pmm.h"
 #include "../arch/aarch64/timer.h"
 
 #define KSVC_BLOCK 0UL /* x0 = wait_queue_t* to link onto */
@@ -49,6 +50,8 @@ typedef struct task {
 
     uint64_t wake_tick;      /* nonzero while asleep: tick to wake at */
     struct task *wait_next;  /* wait_queue_t linkage; unused otherwise */
+
+    uint64_t heap_brk; /* current SYS_SBRK break; 0 for kernel-mode tasks (unused) */
 
     fd_slot_t fds[TASK_MAX_FDS];
 
@@ -121,6 +124,7 @@ static task_t *alloc_task(const char *name) {
     t->sp = (uint64_t)frame;
     t->wake_tick = 0;
     t->wait_next = NULL;
+    t->heap_brk = 0;
     for (int i = 0; i < TASK_MAX_FDS; i++) {
         t->fds[i].used = 0;
     }
@@ -155,6 +159,7 @@ int task_create_user(const char *name, vmm_addrspace_t as, uint64_t entry_va, ui
     t->spsr = SPSR_USER_INIT;
     t->sp_el0 = user_sp_top;
     t->as = as;
+    t->heap_brk = TASK_HEAP_BASE;
     return t->pid;
 }
 
@@ -245,6 +250,37 @@ void sched_kill(int pid) {
         }
         t = t->next;
     } while (t != task0);
+}
+
+int64_t sched_sbrk(int64_t increment) {
+    uint64_t old_brk = current->heap_brk;
+    if (increment == 0) {
+        return (int64_t)old_brk;
+    }
+    if (increment < 0) {
+        return -1; /* shrinking isn't supported */
+    }
+    uint64_t new_brk = old_brk + (uint64_t)increment;
+    if (new_brk > TASK_HEAP_MAX || new_brk < old_brk) {
+        return -1; /* past the fixed heap window, or overflowed */
+    }
+
+    /* Whatever was mapped by the previous call always covers exactly
+       [TASK_HEAP_BASE, page_align_up(old_brk)) — recomputing that bound
+       from old_brk here (rather than tracking it separately) is always
+       correct precisely because that invariant holds after every call. */
+    uint64_t cur_end = (old_brk + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1);
+    uint64_t needed_end = (new_brk + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1);
+    for (uint64_t va = cur_end; va < needed_end; va += PAGE_SIZE) {
+        uint64_t phys = pmm_alloc_page();
+        if (phys == 0) {
+            return -1; /* out of physical memory */
+        }
+        vmm_map_user_data_in(current->as, va, phys);
+    }
+
+    current->heap_brk = new_brk;
+    return (int64_t)old_brk;
 }
 
 /* Takes ownership of `data` (a kmalloc'd buffer, e.g. from

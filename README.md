@@ -1,5 +1,7 @@
 # NaumiOS
 
+[![build](https://github.com/gobgolaxi/NaumiOS/actions/workflows/build.yml/badge.svg)](https://github.com/gobgolaxi/NaumiOS/actions/workflows/build.yml)
+
 Экспериментальная операционная система для архитектуры ARM (AArch64), написанная с нуля.
 
 ## Требования для сборки

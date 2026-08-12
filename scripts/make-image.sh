@@ -8,6 +8,10 @@ USER_ELF="$BUILD_DIR/user_demo.elf"
 CAT_ELF="$BUILD_DIR/cat.elf"
 WM_ELF="$BUILD_DIR/wm.elf"
 CONSOLE_ELF="$BUILD_DIR/console.elf"
+MEMTEST_ELF="$BUILD_DIR/memtest.elf"
+DOOM_ELF="$BUILD_DIR/doom.elf"
+FILEMGR_ELF="$BUILD_DIR/filemgr.elf"
+EDIT_ELF="$BUILD_DIR/edit.elf"
 IMAGE="$BUILD_DIR/naumios.hdd"
 LIMINE_EFI="/usr/share/limine/BOOTAA64.EFI"
 
@@ -31,9 +35,24 @@ mcopy -i "${IMAGE}@@1M" "$USER_ELF" ::/boot/user_demo
 mcopy -i "${IMAGE}@@1M" "$ROOT_DIR/boot-image/limine.conf" ::/boot/limine/
 mcopy -i "${IMAGE}@@1M" "$ROOT_DIR/boot-image/hello.txt" ::/hello.txt
 mcopy -i "${IMAGE}@@1M" "$ROOT_DIR/boot-image/font.ttf" ::/font.ttf
+if [ -f "$ROOT_DIR/boot-image/doom1.wad" ]; then
+    mcopy -i "${IMAGE}@@1M" "$ROOT_DIR/boot-image/doom1.wad" ::/doom1.wad
+fi
 mcopy -i "${IMAGE}@@1M" "$CAT_ELF" ::/bin/cat.elf
 mcopy -i "${IMAGE}@@1M" "$WM_ELF" ::/bin/wm.elf
 mcopy -i "${IMAGE}@@1M" "$CONSOLE_ELF" ::/bin/console.elf
+if [ -f "$MEMTEST_ELF" ]; then
+    mcopy -i "${IMAGE}@@1M" "$MEMTEST_ELF" ::/bin/memtest.elf
+fi
+if [ -f "$DOOM_ELF" ]; then
+    mcopy -i "${IMAGE}@@1M" "$DOOM_ELF" ::/bin/doom.elf
+fi
+if [ -f "$FILEMGR_ELF" ]; then
+    mcopy -i "${IMAGE}@@1M" "$FILEMGR_ELF" ::/bin/filemgr.elf
+fi
+if [ -f "$EDIT_ELF" ]; then
+    mcopy -i "${IMAGE}@@1M" "$EDIT_ELF" ::/bin/edit.elf
+fi
 mcopy -i "${IMAGE}@@1M" "$LIMINE_EFI" ::/EFI/BOOT/
 
 echo "Образ собран: $IMAGE"

@@ -36,7 +36,8 @@
 
 #define QSIZE 8U /* small, fixed, well under any QueueNumMax QEMU offers */
 
-#define VIRTIO_BLK_T_IN 0U /* read */
+#define VIRTIO_BLK_T_IN  0U /* read */
+#define VIRTIO_BLK_T_OUT 1U /* write */
 
 typedef struct __attribute__((packed)) {
     uint64_t addr;
@@ -223,6 +224,64 @@ int virtio_blk_read(uint64_t start_sector, void *buf, uint32_t sector_count) {
 
     if (*req_status != 0) {
         uart_puts("virtio_blk: device reported error, status=");
+        uart_puthex(*req_status);
+        uart_puts("\n");
+        return -1;
+    }
+
+    return 0;
+}
+
+int virtio_blk_write(uint64_t start_sector, const void *buf, uint32_t sector_count) {
+    if (mmio_base == 0) {
+        return -1;
+    }
+
+    req_hdr->type = VIRTIO_BLK_T_OUT;
+    req_hdr->reserved = 0;
+    req_hdr->sector = start_sector;
+    *req_status = 0xFF;
+
+    desc[0].addr = phys_of(req_hdr);
+    desc[0].len = sizeof(*req_hdr);
+    desc[0].flags = VIRTQ_DESC_F_NEXT;
+    desc[0].next = 1;
+
+    /* Unlike a read, the data descriptor is device-*readable* here — we're
+       sending it the sector contents, not asking it to fill a buffer. */
+    desc[1].addr = phys_of(buf);
+    desc[1].len = sector_count * VIRTIO_BLK_SECTOR_SIZE;
+    desc[1].flags = VIRTQ_DESC_F_NEXT;
+    desc[1].next = 2;
+
+    desc[2].addr = phys_of(req_status);
+    desc[2].len = 1;
+    desc[2].flags = VIRTQ_DESC_F_WRITE;
+    desc[2].next = 0;
+
+    __asm__ volatile ("dsb sy" ::: "memory");
+
+    uint16_t avail_idx = avail->idx;
+    avail->ring[avail_idx % QSIZE] = 0;
+    __asm__ volatile ("dsb sy" ::: "memory");
+    avail->idx = avail_idx + 1;
+    __asm__ volatile ("dsb sy" ::: "memory");
+
+    mmio_write32(REG_QUEUE_NOTIFY, 0);
+
+    uint32_t spins = 0;
+    while (used->idx == last_used_idx) {
+        spins++;
+        if (spins > 100000000U) {
+            uart_puts("virtio_blk: write timed out\n");
+            return -1;
+        }
+    }
+    __asm__ volatile ("dsb sy" ::: "memory");
+    last_used_idx = used->idx;
+
+    if (*req_status != 0) {
+        uart_puts("virtio_blk: write device reported error, status=");
         uart_puthex(*req_status);
         uart_puts("\n");
         return -1;

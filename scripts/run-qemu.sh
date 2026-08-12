@@ -23,6 +23,12 @@ cp -f "$FW_VARS_SRC" "$FW_VARS"
 # build supports if gtk isn't it.
 DISPLAY_MODE="${NAUMIOS_DISPLAY:-none}"
 
+# NAUMIOS_AUDIODEV=pa (or alsa, sdl, ...) to actually hear sound on the
+# host. Defaults to the "none" backend (QEMU still emulates the device and
+# our driver still talks to it — audio is just discarded) so headless/
+# automated runs never need a real host audio device to boot successfully.
+AUDIO_BACKEND="${NAUMIOS_AUDIODEV:-none}"
+
 # Explicit virtio-mmio (virtio-blk-device) rather than the `if=virtio`
 # shorthand, which on `virt` defaults to virtio-blk-*pci* — mmio is what our
 # own virtio_mmio.c driver understands, and skips needing a PCI enumerator
@@ -39,5 +45,7 @@ exec qemu-system-aarch64 \
     -device ramfb \
     -device virtio-keyboard-device \
     -device virtio-tablet-device \
+    -device virtio-sound-device,audiodev=snd0 \
+    -audiodev "$AUDIO_BACKEND,id=snd0" \
     -serial stdio \
     -display "$DISPLAY_MODE"

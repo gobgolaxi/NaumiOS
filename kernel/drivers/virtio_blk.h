@@ -22,4 +22,9 @@ int virtio_blk_init(void);
    Returns 0 on success, -1 on failure/timeout. */
 int virtio_blk_read(uint64_t start_sector, void *buf, uint32_t sector_count);
 
+/* Writes `sector_count` consecutive 512-byte sectors starting at
+   `start_sector` from `buf` (same HHDM-backing requirement as
+   virtio_blk_read()). Returns 0 on success, -1 on failure/timeout. */
+int virtio_blk_write(uint64_t start_sector, const void *buf, uint32_t sector_count);
+
 #endif

@@ -66,6 +66,12 @@ void compositor_fill_rect(int pid, uint32_t x, uint32_t y, uint32_t w, uint32_t 
 void compositor_draw_text(int pid, uint32_t x, uint32_t y, const char *text,
                            uint32_t fg, uint32_t bg, uint32_t scale);
 
+/* Copies a w*h, tightly packed, row-major 32bpp pixel buffer into `pid`'s
+   window at window-relative (x, y), clipped to its client area — the fast
+   path for pushing an entire pre-rendered frame at once (e.g. a game's own
+   software renderer), instead of many small compositor_fill_rect() calls. */
+void compositor_blit(int pid, uint32_t x, uint32_t y, uint32_t w, uint32_t h, const uint32_t *pixels);
+
 /* Marks the whole desktop dirty so compositor_task recomposites+presents on
    its next iteration — cheap to call every frame; the actual work is
    deferred and coalesced onto the compositor task's own cadence. */

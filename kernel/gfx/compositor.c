@@ -268,6 +268,23 @@ void compositor_draw_text(int pid, uint32_t x, uint32_t y, const char *text,
     font_draw_text_buf(win->buf, (uint32_t)fb_width(), (uint32_t)fb_height(), x, y, text, fg, bg, scale);
 }
 
+void compositor_blit(int pid, uint32_t x, uint32_t y, uint32_t w, uint32_t h, const uint32_t *pixels) {
+    int wi = find_by_pid(pid);
+    if (wi < 0 || w == 0 || h == 0) {
+        return;
+    }
+    window_t *win = &windows[wi];
+    if (x >= win->client_w || y >= win->client_h) {
+        return;
+    }
+    uint32_t cw = (x + w > win->client_w) ? win->client_w - x : w;
+    uint32_t ch = (y + h > win->client_h) ? win->client_h - y : h;
+    /* src_pitch is `w` (the caller's own buffer stride, tightly packed),
+       not fb_width() — only the destination is fb_width()-strided. */
+    fb_buf_blit(win->buf, (uint32_t)fb_width(), (uint32_t)fb_height(), x, y,
+                (const uint8_t *)pixels, w, cw, ch);
+}
+
 void compositor_present(int pid) {
     (void)pid;
     dirty = 1;
@@ -429,6 +446,27 @@ static void draw_titlebar_button(uint8_t *buf, uint32_t bw, uint32_t bh, uint32_
     }
 }
 
+/* Classic Win95 active-titlebar look: a left-to-right gradient rather than
+   a flat fill. One 1px-wide fill_rect per column — titlebars are a few
+   hundred pixels wide at most, cheap enough not to matter next to
+   everything else a composite pass already does. */
+static void fill_gradient_h(uint8_t *buf, uint32_t buf_w, uint32_t buf_h,
+                             uint32_t x, uint32_t y, uint32_t w, uint32_t h,
+                             uint32_t c0, uint32_t c1) {
+    if (w == 0) {
+        return;
+    }
+    int r0 = (int)(c0 >> 16) & 0xFF, g0 = (int)(c0 >> 8) & 0xFF, b0 = (int)c0 & 0xFF;
+    int r1 = (int)(c1 >> 16) & 0xFF, g1 = (int)(c1 >> 8) & 0xFF, b1 = (int)c1 & 0xFF;
+    uint32_t span = (w > 1) ? (w - 1) : 1;
+    for (uint32_t i = 0; i < w; i++) {
+        int r = r0 + (r1 - r0) * (int)i / (int)span;
+        int g = g0 + (g1 - g0) * (int)i / (int)span;
+        int b = b0 + (b1 - b0) * (int)i / (int)span;
+        fb_buf_fill_rect(buf, buf_w, buf_h, x + i, y, 1, h, fb_rgb((uint8_t)r, (uint8_t)g, (uint8_t)b));
+    }
+}
+
 static void draw_chrome(const window_t *win, int focused) {
     uint8_t *scr = fb_screen_buffer();
     uint32_t sw = (uint32_t)fb_width();
@@ -440,9 +478,16 @@ static void draw_chrome(const window_t *win, int focused) {
     uint32_t tb_x = win->x + BORDER;
     uint32_t tb_y = win->y + BORDER;
     uint32_t tb_w = win->w - 2 * BORDER;
-    uint32_t title_color = focused ? fb_rgb(0, 0, 128) : fb_rgb(128, 128, 128);
-    fb_buf_fill_rect(scr, sw, sh, tb_x, tb_y, tb_w, TITLE_H, title_color);
-    font_draw_text_buf(scr, sw, sh, tb_x + 4, tb_y + 6, win->title, fb_rgb(255, 255, 255), title_color, 1);
+    uint32_t title_start = focused ? fb_rgb(0, 0, 128) : fb_rgb(96, 96, 96);
+    uint32_t title_end = focused ? fb_rgb(16, 132, 208) : fb_rgb(160, 160, 160);
+    fill_gradient_h(scr, sw, sh, tb_x, tb_y, tb_w, TITLE_H, title_start, title_end);
+    /* Text background is flat (title_start) rather than following the
+       gradient under it — font_draw_text_buf() paints one opaque color
+       behind each glyph cell, and the title sits at the gradient's left
+       edge (closest to title_start) so the seam is minor. True
+       gradient-matched text would need the font renderer to blend against
+       a per-pixel background instead of a single flat one. */
+    font_draw_text_buf(scr, sw, sh, tb_x + 4, tb_y + 6, win->title, fb_rgb(255, 255, 255), title_start, 1);
 
     draw_titlebar_button(scr, sw, sh, max_btn_x(win), tb_y + 3, 0);
     draw_titlebar_button(scr, sw, sh, close_btn_x(win), tb_y + 3, 1);
@@ -576,6 +621,18 @@ void compositor_task(void) {
             dirty = 0;
         }
 
-        for (volatile int i = 0; i < 20000; i++) { }
+        /* A real block (sched_sleep_ticks(), kernel tasks can call it
+           directly — no syscall needed) instead of a busy-spin: this task
+           previously stayed TASK_STATE_READY the whole time, so
+           pick_next()'s round-robin gave it exactly one turn per full
+           cycle through every other ready task — with several of those
+           being pure idle-spin loops themselves (see userland/wm,
+           userland/console, userland/doom's DG_SleepMs), the compositor
+           was sharing turns with tasks doing nothing, capping real-world
+           composite/present frequency far below what "1 tick of work every
+           ~10ms" should allow. One tick here caps polling/compositing at
+           the timer's own 100 Hz — already imperceptible latency for
+           input — while actually giving up the CPU between iterations. */
+        sched_sleep_ticks(1);
     }
 }

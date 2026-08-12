@@ -19,6 +19,14 @@
 #define SYS_SPAWN        11UL /* a0 = path (NUL-terminated) — resolved under /bin like the shell's `run` */
 #define SYS_HAS_FOCUS    12UL /* no args — 1 if this task's window currently has keyboard focus, else 0 */
 #define SYS_WIN_CREATE   13UL /* a0 = struct sys_win_create* (in), a1 = title (NUL-terminated) */
+#define SYS_SBRK         14UL /* a0 = increment (int64_t, >= 0) — see sched_sbrk() */
+#define SYS_FB_BLIT      15UL /* a0 = struct sys_fb_blit_rect* (in), a1 = w*h uint32_t pixels, row-major */
+#define SYS_GET_TICKS_MS 16UL /* no args — milliseconds since boot (timer_ticks() * 10, 100 Hz tick) */
+#define SYS_SLEEP_MS     17UL /* a0 = milliseconds — really blocks (sched_sleep_ticks()), not a busy-wait */
+#define SYS_AUDIO_PLAY   18UL /* a0 = ptr to U8 mono 11025Hz PCM, a1 = length in bytes — see virtio_sound.h */
+#define SYS_FILE_WRITE   19UL /* a0 = path, a1 = data, a2 = length — create/overwrite, see fat16_write_file() */
+#define SYS_MKDIR        20UL /* a0 = path — create-if-missing, see fat16_mkdir() */
+#define SYS_LISTDIR      21UL /* a0 = path, a1 = struct sys_dirent* (out array), a2 = capacity — returns entry count */
 
 /* Kernel-mediated drawing/input, now backed by a real per-process window
    (see kernel/gfx/compositor.h) instead of a single shared framebuffer:
@@ -53,6 +61,21 @@ struct sys_fb_text {
 struct sys_win_create {
     uint32_t w, h;      /* client area size; ignored (forced fullscreen) for WIN_FLAG_BORDERLESS */
     uint32_t flags;     /* see WIN_FLAG_BORDERLESS in kernel/gfx/compositor.h */
+};
+
+struct sys_fb_blit_rect {
+    uint32_t x, y, w, h;
+};
+
+/* Mirrors fat16_visitor_t's callback args (see kernel/fs/fat16.h) — one
+   entry per non-LFN, non-volume-label directory entry. `name` is
+   "NAME.EXT" or "NAME" as stored on disk (uppercase, trailing spaces
+   trimmed), truncated to fit if somehow longer (shouldn't happen for any
+   real 8.3 name). */
+struct sys_dirent {
+    char name[13];
+    uint32_t size;
+    uint32_t is_dir;
 };
 
 /* SYS_EXIT is intercepted before reaching here (it needs to drop the

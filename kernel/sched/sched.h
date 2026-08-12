@@ -112,4 +112,20 @@ int sched_task_alive(int pid);
    already a zombie. */
 void sched_kill(int pid);
 
+/* Per-process heap, backed by SYS_SBRK. Fixed VA window, page-mapped
+   lazily as the break grows — see sched_sbrk() in sched.c. Userland's
+   malloc() (userland/lib/libc.c) is the only intended caller, via the
+   syscall; nothing kernel-side needs this range. */
+#define TASK_HEAP_BASE 0x10000000UL
+#define TASK_HEAP_MAX  (TASK_HEAP_BASE + 64UL * 1024 * 1024)
+
+/* Classic sbrk() semantics: increment == 0 queries the current break
+   (returned either way); increment > 0 grows it, mapping whatever new
+   pages that requires into the calling task's own address space, and
+   returns the break's value *before* growing. Negative increments
+   (shrinking) aren't supported — nothing in this project's userland needs
+   to give memory back yet. Returns -1 on failure (out of the fixed
+   TASK_HEAP_MAX window, physical memory exhausted, or increment < 0). */
+int64_t sched_sbrk(int64_t increment);
+
 #endif

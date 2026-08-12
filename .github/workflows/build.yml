@@ -1,0 +1,31 @@
+name: build
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  kernel-and-userland:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Ubuntu doesn't package the bare-metal aarch64-none-elf toolchain
+      # used for local development, but gcc-aarch64-linux-gnu builds this
+      # tree identically: the Makefile's -ffreestanding -nostdinc -nostdlib
+      # flags mean nothing here ever depends on the target triple's libc,
+      # only on GCC's own bundled freestanding headers (queried via
+      # `$(CC) -print-file-name=include`, whatever CC turns out to be).
+      # Confirmed by building this exact tree with both toolchains and
+      # diffing the resulting kernel.elf and every userland .elf.
+      - name: Install cross toolchain
+        run: sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu
+
+      - name: Build kernel + userland
+        run: make TOOLCHAIN=aarch64-linux-gnu-
+
+      - name: Verify every expected ELF was produced
+        run: |
+          for f in kernel wm cat console memtest doom filemgr edit user_demo; do
+            test -s "build/$f.elf" || { echo "missing build/$f.elf"; exit 1; }
+          done

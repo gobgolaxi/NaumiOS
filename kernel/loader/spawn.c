@@ -9,8 +9,14 @@
 /* Every spawned process gets the same stack VA — safe because each one
    lives in its own address space (see vmm_new_addrspace()); proven by the
    two concurrent user_demo instances that already run at identical VAs
-   without colliding. */
-#define USER_STACK_VA 0x500000UL
+   without colliding. 128MiB above the 0x400000 ELF load address (every
+   userland program's own user.ld linker script): comfortable headroom for
+   any single-PT_LOAD-segment program's combined .text/.rodata/.data/.bss
+   to grow into without ever reaching the stack page — needed once
+   userland/doom's ~80-file engine image is far bigger than this project's
+   earlier, tiny userland programs. TASK_HEAP_BASE (kernel/sched/sched.h)
+   starts at 256MiB, past this with its own margin. */
+#define USER_STACK_VA 0x8000000UL
 
 int spawn_elf_bytes(const char *name, const void *data, size_t size) {
     vmm_addrspace_t as = vmm_new_addrspace();

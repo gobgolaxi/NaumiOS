@@ -25,4 +25,19 @@ void fat16_list_dir(const char *path, fat16_visitor_t visit);
    directory, or on I/O error. */
 int fat16_read_file(const char *path, uint8_t **out_data, uint32_t *out_size);
 
+/* Creates or overwrites the file at `path` with `size` bytes from `data`
+   (its parent directory must already exist — see fat16_mkdir()). If the
+   file already existed, its old cluster chain is reused where possible
+   and any leftover clusters (the new data is shorter) are freed. Returns
+   0 on success, -1 if the parent doesn't exist/isn't a directory, its
+   directory has no free entry slot and can't be extended (root only —
+   it's a fixed-size run), the volume is full, or an I/O error. */
+int fat16_write_file(const char *path, const uint8_t *data, uint32_t size);
+
+/* Creates an empty subdirectory at `path` (parent must already exist).
+   Idempotent: returns 0 without creating anything if `path` already
+   exists and is a directory. Returns -1 on the same failure conditions
+   as fat16_write_file(), or if `path` exists but is a file. */
+int fat16_mkdir(const char *path);
+
 #endif

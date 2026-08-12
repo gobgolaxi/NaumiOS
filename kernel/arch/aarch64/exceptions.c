@@ -56,7 +56,33 @@ static uint64_t svc_handler(uint64_t *regs) {
         return sched_exit_current();
     }
 
+    /* ELR_EL1/SPSR_EL1 are single physical registers, not a stack — taking
+       ANY new exception overwrites them with that exception's own
+       return-address/pstate, unconditionally. That's fine as long as
+       nothing else exception-worthy happens between this vector's entry
+       and its own eret. But syscall_dispatch() can now call
+       sched_sleep_ticks() (SYS_SLEEP_MS), which executes its own nested
+       `svc` (vector 4, see sched_handle_el1_svc()) — and that nested
+       exception's handling legitimately reprograms ELR_EL1/SPSR_EL1 too,
+       first to capture the blocking task's own resume point, then to
+       restore whichever *other* task got picked to run next. By the time
+       this task is eventually rescheduled and execution naturally winds
+       back up the C call stack to here, the physical registers hold
+       whatever was left over from that unrelated task switch — not this
+       syscall's own "resume at EL0, right after the original svc"
+       target. Save/restore around the dispatch call fixes it in both
+       cases: when nothing nested happens, it's a no-op (same values back);
+       when something did, it overwrites the stale leftovers with the
+       correct target captured right here. */
+    uint64_t saved_elr, saved_spsr;
+    __asm__ volatile ("mrs %0, elr_el1" : "=r"(saved_elr));
+    __asm__ volatile ("mrs %0, spsr_el1" : "=r"(saved_spsr));
+
     regs[0] = syscall_dispatch(num, regs[0], regs[1], regs[2]);
+
+    __asm__ volatile ("msr elr_el1, %0" :: "r"(saved_elr));
+    __asm__ volatile ("msr spsr_el1, %0" :: "r"(saved_spsr));
+
     return (uint64_t)regs;
 }
 

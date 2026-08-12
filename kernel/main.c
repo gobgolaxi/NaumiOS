@@ -7,6 +7,7 @@
 #include "drivers/framebuffer.h"
 #include "drivers/font.h"
 #include "drivers/input.h"
+#include "drivers/virtio_sound.h"
 #include "fs/gpt.h"
 #include "fs/fat16.h"
 #include "mm/pmm.h"
@@ -59,15 +60,19 @@ static void hcf(void) {
     }
 }
 
-/* Demo tasks proving preemptive round-robin scheduling: each just spins on
-   its own, and the timer tick interleaves their output with kmain's own
-   "task 0" loop below. Deliberately slow (print every few seconds) so they
-   don't drown out the interactive shell sharing the same UART. */
+/* Demo tasks proving preemptive round-robin scheduling: each just prints
+   and sleeps, and the timer tick interleaves their output with kmain's own
+   "task 0" loop below. A real sched_sleep_ticks() block (not a busy-wait)
+   — these used to spin, which kept them TASK_STATE_READY the whole time,
+   so pick_next()'s round-robin gave them a full turn every cycle for
+   nothing. That's the difference between "8 tasks sharing turns" and "2
+   tasks (compositor + whatever's actually working) sharing turns" once
+   enough of the tree's idle loops became real sleeps instead. */
 static void task_a(void) {
     uint32_t n = 0;
     for (;;) {
         uart_puts("[A] "); uart_puthex(n++); uart_puts("\n");
-        for (volatile int i = 0; i < 200000000; i++) { }
+        sched_sleep_ticks(200); /* 2s at the 100 Hz tick rate */
     }
 }
 
@@ -75,7 +80,7 @@ static void task_b(void) {
     uint32_t n = 0;
     for (;;) {
         uart_puts("[B] "); uart_puthex(n++); uart_puts("\n");
-        for (volatile int i = 0; i < 200000000; i++) { }
+        sched_sleep_ticks(200);
     }
 }
 
@@ -150,6 +155,7 @@ void kmain(void) {
     }
 
     input_init();
+    virtio_sound_init(); /* optional — no device / setup failure just means silence, not a boot failure */
 
     sched_init();
     task_create("task_a", task_a);

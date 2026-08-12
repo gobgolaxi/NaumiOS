@@ -24,8 +24,10 @@ struct icon {
     const char *path;
 };
 
-static const struct icon icons[1] = {
-    { 700, 500, "Console", "console.elf" },
+static const struct icon icons[3] = {
+    { 700, 400, "Files", "filemgr.elf" },
+    { 700, 460, "Editor", "edit.elf" },
+    { 700, 520, "Console", "console.elf" },
 };
 
 static int hit_icon(const struct icon *ic, long px, long py) {
@@ -73,6 +75,6 @@ void _start(void) {
             }
         }
 
-        for (volatile int i = 0; i < 50000; i++) { }
+        sys_sleep_ms(10); /* real block, not a busy-wait — see naumi.h */
     }
 }

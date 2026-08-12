@@ -20,6 +20,14 @@
 #define SYS_SPAWN        11UL
 #define SYS_HAS_FOCUS    12UL
 #define SYS_WIN_CREATE   13UL
+#define SYS_SBRK         14UL
+#define SYS_FB_BLIT      15UL
+#define SYS_GET_TICKS_MS 16UL
+#define SYS_SLEEP_MS     17UL
+#define SYS_AUDIO_PLAY   18UL
+#define SYS_FILE_WRITE   19UL
+#define SYS_MKDIR        20UL
+#define SYS_LISTDIR      21UL
 
 /* Layouts must exactly match kernel/sched/syscall.h's struct sys_fb_info /
    sys_fb_rect / sys_input_event / sys_win_create — the kernel reads/writes
@@ -59,6 +67,10 @@ struct fb_text {
 struct win_create {
     unsigned int w, h;   /* client area size; ignored (forced fullscreen) for WIN_BORDERLESS */
     unsigned int flags;
+};
+
+struct fb_blit_rect {
+    unsigned int x, y, w, h;
 };
 
 #define EV_SYN 0
@@ -157,6 +169,82 @@ static inline long sys_win_create(unsigned int w, unsigned int h, unsigned int f
                                    const char *title) {
     struct win_create req = { w, h, flags };
     return naumi_syscall(SYS_WIN_CREATE, (unsigned long)&req, (unsigned long)title, 0);
+}
+
+/* Copies a w*h, tightly packed, row-major 32bpp pixel buffer into this
+   window at (x, y), clipped to its client area — for pushing a whole
+   pre-rendered frame at once instead of many small sys_fb_fill() calls
+   (e.g. a game's own software renderer). Colors use the same channel
+   layout as rgb() below. */
+static inline long sys_fb_blit(unsigned int x, unsigned int y, unsigned int w, unsigned int h,
+                                const unsigned int *pixels) {
+    struct fb_blit_rect r = { x, y, w, h };
+    return naumi_syscall(SYS_FB_BLIT, (unsigned long)&r, (unsigned long)pixels, 0);
+}
+
+/* Milliseconds since boot — for pacing a game loop/animation. */
+static inline unsigned long sys_get_ticks_ms(void) {
+    return (unsigned long)naumi_syscall(SYS_GET_TICKS_MS, 0, 0, 0);
+}
+
+/* Really blocks (the calling task leaves the ready rotation entirely and
+   the scheduler skips it until the deadline — see sched_sleep_ticks() in
+   kernel/sched/sched.c), not a busy-wait. Always prefer this over an idle
+   spin loop: a spinning task still gets picked every round-robin turn for
+   nothing, competing for CPU with tasks doing real work (the compositor,
+   most of all). Rounds up to the nearest 10ms tick. */
+static inline void sys_sleep_ms(unsigned long ms) {
+    naumi_syscall(SYS_SLEEP_MS, ms, 0, 0);
+}
+
+/* Submits `len` bytes of U8 mono 11025Hz PCM for playback — the one format
+   virtio_sound.c's stream is configured for, chosen specifically to match
+   DOOM's own sound lumps with no resampling needed. Fire-and-forget,
+   single-voice: returns -1 (dropping this clip) if a previous one is still
+   playing, rather than blocking the caller or corrupting an in-flight
+   buffer. Returns 0 if the clip was submitted (not once it finishes). */
+static inline long sys_audio_play(const void *pcm, unsigned long len) {
+    return naumi_syscall(SYS_AUDIO_PLAY, (unsigned long)pcm, len, 0);
+}
+
+/* Creates or overwrites the file at `path` with `len` bytes from `data`
+   in one call — the whole file has to already be in memory (see
+   userland/lib/stdio.c's fopen("w") buffering), there's no incremental
+   "open, write some, write more, close" on the kernel side. `path`'s
+   parent directory must already exist (see sys_mkdir()). Returns 0 on
+   success, -1 on failure (parent missing, directory full, volume full,
+   or I/O error). */
+static inline long sys_file_write(const char *path, const void *data, unsigned long len) {
+    return naumi_syscall(SYS_FILE_WRITE, (unsigned long)path, (unsigned long)data, len);
+}
+
+/* Creates an empty directory at `path` (parent must already exist).
+   Returns 0 if it was created or already existed as a directory, -1
+   otherwise. */
+static inline long sys_mkdir(const char *path) {
+    return naumi_syscall(SYS_MKDIR, (unsigned long)path, 0, 0);
+}
+
+struct dirent_wire {
+    char name[13];
+    unsigned int size;
+    unsigned int is_dir;
+};
+
+/* Lists the directory at `path` ("" or NULL means root) into `out`, up to
+   `cap` entries. Returns the entry count (may be less than the directory
+   actually holds if `cap` was too small — extras are silently dropped,
+   not an error), or 0 for an empty/nonexistent directory. */
+static inline long sys_listdir(const char *path, struct dirent_wire *out, unsigned long cap) {
+    return naumi_syscall(SYS_LISTDIR, (unsigned long)path, (unsigned long)out, cap);
+}
+
+/* Classic sbrk(): 0 queries the current break, a positive increment grows
+   it and returns the break's value *before* growing (i.e. the start of the
+   newly available region), -1 on failure. See userland/lib/libc.c's
+   malloc(), the only intended caller. */
+static inline long sys_sbrk(long increment) {
+    return naumi_syscall(SYS_SBRK, (unsigned long)increment, 0, 0);
 }
 
 /* Bare names ("cat.elf") resolve under /bin, same as the shell's `run`.
